@@ -153,46 +153,55 @@ function ChatbotPage() {
         }),
       });
 
-      const data = await res.json();
+      // ✅ SAFE JSON PARSE
+      let data: any = {};
 
-      // 🔥 LLM FEEL DELAY
-      setTimeout(
-        () => {
-          setTyping(false);
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("Invalid JSON response");
+      }
 
-          const replyText = data?.reply?.message || data?.message || data?.reply || "No response";
+      if (!res.ok) {
+        throw new Error(data?.message || "API Error");
+      }
 
-          let options = data?.reply?.options || data?.options || [];
+      setTimeout(() => {
+        setTyping(false);
 
-          // 🔥 normalize
-          if (options.length && typeof options[0] === "string") {
-            options = options.map((opt: string) => ({
-              label: opt,
-              value: opt,
-            }));
-          }
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `b-${Date.now()}`,
-              role: "bot",
-              text: replyText,
-              ts: Date.now(),
-              options,
-            },
-          ]);
-        },
-        800 + Math.random() * 700,
-      );
-    } catch (err) {
+        const replyText = data?.reply?.message || data?.message || data?.reply || "No response";
+
+        let options = data?.reply?.options || data?.options || [];
+
+        if (options.length && typeof options[0] === "string") {
+          options = options.map((opt: string) => ({
+            label: opt,
+            value: opt,
+          }));
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `b-${Date.now()}`,
+            role: "bot",
+            text: String(replyText),
+            ts: Date.now(),
+            options,
+          },
+        ]);
+      }, 800);
+    } catch (err: any) {
+      console.error(err);
+
       setTyping(false);
 
       setMessages((prev) => [
         ...prev,
         {
-          id: `b-${Date.now()}`,
+          id: `err-${Date.now()}`,
           role: "bot",
-          text: "❌ Server error",
+          text: err?.message || "❌ Server error",
           ts: Date.now(),
         },
       ]);
