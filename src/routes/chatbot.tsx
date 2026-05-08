@@ -1,24 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { KeyRound, Send, CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/chatbot")({
   component: ChatbotPage,
 });
-const BASE_API_URL = "http://13.53.93.182/api/";
 
-const API_URL = "http://13.53.93.182/api/T5Y8U2I9O3P1A6S4/";
+// ✅ CHANGE THIS TO YOUR HTTPS DOMAIN LATER
+const BASE_API_URL = "http://13.53.93.182/api/";
 
 interface Message {
   id: string;
   role: "user" | "bot";
   text: string;
   ts: number;
-  options?: { label: string; value: string }[];
+  options?: {
+    label: string;
+    value: string;
+  }[];
 }
 
 function formatTime(ts: number) {
@@ -40,15 +42,18 @@ function ChatbotPage() {
       ts: Date.now(),
     },
   ]);
+
   const [apiInput, setApiInput] = useState("");
-  const apiUrlRef = useRef<string | null>(null);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
 
+  const apiUrlRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ SESSION FIX (no hydration issue)
+  // =========================
+  // SESSION
+  // =========================
   useEffect(() => {
     let id = localStorage.getItem("chat_session");
 
@@ -60,7 +65,9 @@ function ChatbotPage() {
     sessionIdRef.current = id;
   }, []);
 
-  // auto scroll
+  // =========================
+  // AUTO SCROLL
+  // =========================
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -69,7 +76,7 @@ function ChatbotPage() {
   }, [messages, typing]);
 
   // =========================
-  // 🔌 CONNECT API
+  // CONNECT API
   // =========================
   const handleConnect = async () => {
     if (!apiInput.trim()) return;
@@ -82,41 +89,52 @@ function ChatbotPage() {
 
       const res = await fetch(testUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           message: "hi",
           session_id: sessionIdRef.current,
         }),
       });
 
-      const data = await res.json();
+      let data: any = {};
 
-      if (!res.ok) {
-        throw new Error("Invalid API");
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("Invalid server response");
       }
 
-      // ✅ SUCCESS
+      if (!res.ok) {
+        throw new Error(data?.message || "Invalid API");
+      }
+
       apiUrlRef.current = testUrl;
       setConnected(true);
 
-      setMessages((m) => [
-        ...m,
+      setMessages((prev) => [
+        ...prev,
         {
-          id: `c-${Date.now()}`,
+          id: `connected-${Date.now()}`,
           role: "bot",
-          text: "✅ Connected successfully. You can start chatting now 😊",
+          text: "✅ Connected successfully. You can start chatting now.",
           ts: Date.now(),
         },
       ]);
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
+
       setConnected(false);
 
-      setMessages((m) => [
-        ...m,
+      setMessages((prev) => [
+        ...prev,
         {
-          id: `err-${Date.now()}`,
+          id: `error-${Date.now()}`,
           role: "bot",
-          text: "❌ Invalid API key or server not running.",
+          text:
+            err?.message ||
+            "❌ Failed to connect. Check API key or server.",
           ts: Date.now(),
         },
       ]);
@@ -124,20 +142,38 @@ function ChatbotPage() {
       setConnecting(false);
     }
   };
+
   // =========================
-  // 🚀 SEND MESSAGE
+  // SEND MESSAGE
   // =========================
   const sendMessage = async (text: string) => {
-    if (!text.trim() || !connected || typing) return;
+    if (!text.trim()) return;
 
-    const userMsg: Message = {
-      id: `u-${Date.now()}`,
+    if (!connected) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `warn-${Date.now()}`,
+          role: "bot",
+          text: "⚠️ Connect API first.",
+          ts: Date.now(),
+        },
+      ]);
+
+      return;
+    }
+
+    if (typing) return;
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
       role: "user",
       text,
       ts: Date.now(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, userMessage]);
+
     setInput("");
     setTyping(true);
 
@@ -153,7 +189,6 @@ function ChatbotPage() {
         }),
       });
 
-      // ✅ SAFE JSON PARSE
       let data: any = {};
 
       try {
@@ -163,34 +198,39 @@ function ChatbotPage() {
       }
 
       if (!res.ok) {
-        throw new Error(data?.message || "API Error");
+        throw new Error(data?.message || "Server error");
+      }
+
+      const replyText =
+        data?.reply?.message ||
+        data?.message ||
+        data?.reply ||
+        "No response";
+
+      let options = data?.reply?.options || data?.options || [];
+
+      // normalize options
+      if (Array.isArray(options) && typeof options[0] === "string") {
+        options = options.map((opt: string) => ({
+          label: opt,
+          value: opt,
+        }));
       }
 
       setTimeout(() => {
         setTyping(false);
 
-        const replyText = data?.reply?.message || data?.message || data?.reply || "No response";
-
-        let options = data?.reply?.options || data?.options || [];
-
-        if (options.length && typeof options[0] === "string") {
-          options = options.map((opt: string) => ({
-            label: opt,
-            value: opt,
-          }));
-        }
-
         setMessages((prev) => [
           ...prev,
           {
-            id: `b-${Date.now()}`,
+            id: `bot-${Date.now()}`,
             role: "bot",
             text: String(replyText),
             ts: Date.now(),
             options,
           },
         ]);
-      }, 800);
+      }, 700);
     } catch (err: any) {
       console.error(err);
 
@@ -199,7 +239,7 @@ function ChatbotPage() {
       setMessages((prev) => [
         ...prev,
         {
-          id: `err-${Date.now()}`,
+          id: `server-error-${Date.now()}`,
           role: "bot",
           text: err?.message || "❌ Server error",
           ts: Date.now(),
@@ -209,34 +249,48 @@ function ChatbotPage() {
   };
 
   return (
-    <div className="relative">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-mesh opacity-50" />
+    <div className="relative min-h-screen overflow-hidden bg-background">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-mesh opacity-40" />
 
-      <div className="relative mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[260px_1fr]">
+      <div className="relative mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[280px_1fr]">
         {/* SIDEBAR */}
         <aside>
-          <div className="rounded-2xl border bg-card p-5 shadow">
-            <LogoMark size={28} />
+          <div className="rounded-2xl border bg-card p-5 shadow-lg">
+            <div className="flex items-center gap-3">
+              <LogoMark size={28} />
 
-            <p className="mt-4 font-semibold">Chatbot Console</p>
+              <div>
+                <h2 className="font-semibold">Chatbot Console</h2>
 
-            <div className="mt-6 text-xs">
+                <p className="text-xs text-muted-foreground">
+                  Connect your chatbot API
+                </p>
+              </div>
+            </div>
+
+            {/* STATUS */}
+            <div className="mt-6 flex items-center text-sm">
               <span
                 className={cn(
-                  "h-2 w-2 inline-block rounded-full mr-2",
-                  connected ? "bg-green-500 animate-pulse" : "bg-gray-400",
+                  "mr-2 inline-block h-2.5 w-2.5 rounded-full",
+                  connected
+                    ? "bg-green-500 animate-pulse"
+                    : "bg-gray-400"
                 )}
               />
+
               {connected ? "Connected" : "Not Connected"}
             </div>
 
+            {/* API INPUT */}
             <div className="mt-6">
-              <Input
-                placeholder="Enter API Key (e.g. A9F3K8L2M7Q1X5Z4)"
+              <input
+                type="text"
+                placeholder="Enter API Key"
                 value={apiInput}
                 onChange={(e) => setApiInput(e.target.value)}
                 disabled={connected}
-                className="mb-3"
+                className="mb-3 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
 
               <Button
@@ -246,8 +300,8 @@ function ChatbotPage() {
               >
                 {connecting ? (
                   <>
-                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                    Connecting
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
                   </>
                 ) : connected ? (
                   <>
@@ -262,36 +316,48 @@ function ChatbotPage() {
           </div>
         </aside>
 
-        {/* CHAT */}
-        <section className="rounded-2xl border bg-card shadow">
+        {/* CHAT SECTION */}
+        <section className="flex flex-col rounded-2xl border bg-card shadow-lg">
           {/* HEADER */}
-          <div className="border-b px-4 py-3 text-sm text-muted-foreground">
-            {connected ? "Connected" : "Awaiting connection"}
+          <div className="border-b px-5 py-4 text-sm text-muted-foreground">
+            {connected
+              ? "✅ Connected to chatbot API"
+              : "⚠️ Awaiting API connection"}
           </div>
 
           {/* MESSAGES */}
-          <div ref={scrollRef} className="h-[60vh] overflow-y-auto px-6 py-6 space-y-4">
+          <div
+            ref={scrollRef}
+            className="h-[65vh] flex-1 overflow-y-auto px-5 py-5 space-y-4"
+          >
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={cn("flex gap-2", m.role === "user" ? "justify-end" : "justify-start")}
+                className={cn(
+                  "flex",
+                  m.role === "user"
+                    ? "justify-end"
+                    : "justify-start"
+                )}
               >
                 <div
                   className={cn(
-                    "max-w-[75%] rounded-xl px-4 py-2 text-sm whitespace-pre-line",
-                    m.role === "user" ? "bg-primary text-white" : "bg-muted",
+                    "max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm whitespace-pre-line",
+                    m.role === "user"
+                      ? "bg-primary text-white"
+                      : "bg-muted"
                   )}
                 >
-                  {m.text}
+                  <div>{m.text}</div>
 
                   {/* OPTIONS */}
-                  {m.options && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {m.options?.map((opt, i) => (
+                  {m.options && m.options.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {m.options.map((opt, i) => (
                         <button
                           key={i}
                           onClick={() => sendMessage(opt.label)}
-                          className="text-xs px-3 py-1 rounded-full border hover:bg-gray-100 dark:hover:bg-gray-800"
+                          className="rounded-full border px-3 py-1 text-xs hover:bg-accent"
                         >
                           {opt.label}
                         </button>
@@ -299,41 +365,46 @@ function ChatbotPage() {
                     </div>
                   )}
 
-                  <div className="text-[10px] mt-1 opacity-60">{formatTime(m.ts)}</div>
+                  <div className="mt-2 text-[10px] opacity-60">
+                    {formatTime(m.ts)}
+                  </div>
                 </div>
               </div>
             ))}
 
             {/* TYPING */}
             {typing && (
-              <div className="flex gap-2">
-                <Loader2 className="animate-spin h-4 w-4" />
-                <div className="flex gap-2 items-center">
-                  {[0, 0.2, 0.4].map((d) => (
-                    <span
-                      key={d}
-                      className="h-2 w-2 rounded-full bg-muted-foreground"
-                      style={{ animation: `bounce-dot 1.2s ${d}s infinite` }}
-                    />
-                  ))}
-                </div>{" "}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                AI is typing...
               </div>
             )}
           </div>
 
           {/* INPUT */}
-          <div className="border-t p-4 flex gap-2">
-            <Input
+          <div className="flex gap-2 border-t p-4">
+            <input
+              type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={!connected}
-              placeholder={connected ? "Type your message..." : "Connect API first..."}
+              placeholder={
+                connected
+                  ? "Type your message..."
+                  : "Connect API first..."
+              }
               onKeyDown={(e) => {
-                if (e.key === "Enter") sendMessage(input);
+                if (e.key === "Enter") {
+                  sendMessage(input);
+                }
               }}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
             />
 
-            <Button onClick={() => sendMessage(input)} disabled={!connected || !input.trim()}>
+            <Button
+              onClick={() => sendMessage(input)}
+              disabled={!connected || !input.trim()}
+            >
               <Send className="h-4 w-4" />
             </Button>
           </div>
