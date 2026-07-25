@@ -1,17 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { KeyRound, Send, CheckCircle2, Loader2 } from "lucide-react";
+import {  Send, CheckCircle2, Loader2 } from "lucide-react";
 import { LogoMark } from "@/components/Logo";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 export const Route = createFileRoute("/chatbot")({
   component: ChatbotPage,
 });
-const BASE_API_URL = "http://13.53.93.182/api/";
+const BASE_API_URL = "https://trypbot.duckdns.org/api/";
 
-const API_URL = "http://13.53.93.182/api/T5Y8U2I9O3P1A6S4/";
+const API_URL = "https://trypbot.duckdns.org/api/T5Y8U2I9O3P1A6S4/";
 
 interface Message {
   id: string;
